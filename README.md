@@ -1,4 +1,4 @@
-# Session Dashboard
+# Corral
 
 A desktop app for running many Claude Code sessions at once. It finds every session on your machine (and on
 your servers over ssh), shows at a glance which ones need you, and lets you answer, review and switch between
@@ -77,7 +77,7 @@ Built with Tauri 2, React 19 and shadcn/ui. Linux first; Windows and macOS build
 ## Download
 
 Installers for Linux (`.AppImage`, `.deb`, `.rpm`), macOS (Apple silicon and Intel) and Windows are on the
-[Releases](https://github.com/shamilbasarov/SessionDashboard/releases/latest) page. They are not signed
+[Releases](https://github.com/TR4SC3ND3NT/Corral/releases/latest) page. They are not signed
 yet: on macOS right-click the app → Open the first time, on Windows choose "More info → Run anyway".
 
 ## Requirements

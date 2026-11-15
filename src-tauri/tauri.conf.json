@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Session Dashboard",
+  "productName": "Corral",
   "version": "0.2.1",
-  "identifier": "dev.sessiondashboard.app",
+  "identifier": "dev.corral.app",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:3000",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Session Dashboard",
+        "title": "Corral",
         "width": 1440,
         "height": 920,
         "center": true,
@@ -48,8 +48,8 @@
     "category": "DeveloperTool",
     "shortDescription": "Run and supervise many Claude Code sessions at once",
     "longDescription": "A desktop app for running many Claude Code sessions in parallel: it finds every session on your machine, shows which ones need you, and lets you answer, review and switch between them.",
-    "homepage": "https://github.com/shamilbasarov/SessionDashboard",
-    "copyright": "shamilbasarov",
-    "publisher": "shamilbasarov"
+    "homepage": "https://github.com/TR4SC3ND3NT/Corral",
+    "copyright": "TR4SC3ND3NT",
+    "publisher": "TR4SC3ND3NT"
   }
 }

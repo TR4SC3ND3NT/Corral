@@ -31,7 +31,7 @@ const EVENTS: [&str; 9] = [
 ];
 
 pub const SCRIPT: &str = r#"#!/bin/sh
-# Session Dashboard hook, installed from the app's Settings (remove it there). Sends the Claude Code
+# Corral hook, installed from the app's Settings (remove it there). Sends the Claude Code
 # hook event, this machine's name and the folder's git status to the dashboard. Runs async, so
 # Claude never waits for it; when the dashboard is closed the post just fails.
 # "wait" (PermissionRequest of a session in a terminal): offers the prompt to the dashboard too and

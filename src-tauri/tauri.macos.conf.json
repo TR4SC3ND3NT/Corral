@@ -2,7 +2,7 @@
   "app": {
     "windows": [
       {
-        "title": "Session Dashboard",
+        "title": "Corral",
         "width": 1440,
         "height": 920,
         "center": true,

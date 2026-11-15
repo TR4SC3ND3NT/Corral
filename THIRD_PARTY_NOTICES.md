@@ -1,6 +1,6 @@
 # Third-party notices
 
-Session Dashboard adapts code and assets from the projects below. Files that adapt code start with a header
+Corral adapts code and assets from the projects below. Files that adapt code start with a header
 `// Adapted from <owner/repo>@<sha>:<path> (<SPDX>). Modified for session-dashboard.` (Apache-2.0 §4(b): modified files are marked).
 Code from copyleft or source-available projects (GPL/AGPL/SUL/PolyForm) was used for ideas only and is not included.
 

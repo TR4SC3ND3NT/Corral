@@ -53,7 +53,7 @@ jobs:
           tauriScript: bun run tauri
           args: ${{ matrix.args }}
           tagName: v__VERSION__
-          releaseName: Session Dashboard v__VERSION__
+          releaseName: Corral v__VERSION__
           releaseDraft: false
           prerelease: false
           releaseBody: |
@@ -65,7 +65,7 @@ jobs:
             - **Windows:** `.msi` or the `-setup.exe` installer
 
             **First start**
-            - macOS: the app is not notarized yet. Right-click it in Applications → Open, or run `xattr -dr com.apple.quarantine "/Applications/Session Dashboard.app"`.
+            - macOS: the app is not notarized yet. Right-click it in Applications → Open, or run `xattr -dr com.apple.quarantine "/Applications/Corral.app"`.
             - Windows: the installer is not signed yet. SmartScreen → More info → Run anyway.
 
             Linux is the main platform. On Windows, the optional hooks (exact states for terminal sessions) are not available yet, and dev-server ports are shown on Linux only.
