@@ -1,7 +1,8 @@
 [package]
 name = "session-dashboard"
-version = "0.4.0"
+version = "0.4.1"
 description = "Corral: one place for all your Claude Code sessions"
+license = "MIT"
 authors = ["you"]
 edition = "2024"
 # the app (tauri dev / cargo run); sd-wrap is the terminal sync helper beside it

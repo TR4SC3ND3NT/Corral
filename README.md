@@ -117,3 +117,8 @@ cd src-tauri && cargo test --lib
 Built on [create-tauri-ui](https://github.com/agmmnn/tauri-ui) and [shadcn/ui](https://ui.shadcn.com).
 Code adapted from other open-source projects is listed with its license in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## License
+
+[MIT](LICENSE). Code adapted from other open-source projects keeps its own license, listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
