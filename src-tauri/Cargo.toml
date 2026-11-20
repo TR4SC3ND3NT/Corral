@@ -1,6 +1,6 @@
 [package]
 name = "session-dashboard"
-version = "0.8.8"
+version = "0.8.9"
 description = "Corral: one place for all your Claude Code sessions"
 license = "MIT"
 authors = ["you"]
