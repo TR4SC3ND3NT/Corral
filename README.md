@@ -30,16 +30,16 @@ Built with Tauri 2, React 19 and shadcn/ui. Runs on Linux, macOS and Windows.
   waits. Dev servers a session started show as `:5173` chips that open in the browser, and a working
   session that has written nothing for five minutes says so.
 - **After a restart.** The sessions that were running when the app closed are offered back in one go.
-- **At the usage limit.** Sessions that stopped at the plan's limit are listed with the reset time (each
-  from its own account); tick the ones that should go on and they continue one by one after the reset,
-  or right away on another account ("Continue now on…", the account with the most room first).
-- **Side by side.** Any session opens in its own window (session menu or `Ctrl+K`), for a second screen.
-- **More than one account.** Other Claude Code config folders (`CLAUDE_CONFIG_DIR`) are read too, a
-  workspace can start its new sessions in one of them, and each account's 5-hour and weekly limits show
-  side by side. Any session on this computer continues on another account with one click (session menu
-  or the Account row in its details): the conversation goes on there as a fork, the old session is
-  archived and stays readable. Optionally, sessions the app runs switch by themselves when they hit
-  the limit (Settings → Sessions → Switch accounts at the limit).
+- **At the usage limit.** Sessions that stopped at the plan's limit are listed with the reset time;
+  tick the ones that should go on and they continue one by one after the reset, or right away on
+  another account ("Switch and continue", the account with the most room first).
+- **Accounts by e-mail.** Bottom left shows the account the app runs on, its plan and 5-hour use; one
+  click switches the whole app to another one (Ctrl+K too). New sessions start on it, and a session
+  continues on it with your next message: same session, same history, all in `~/.claude`. Settings →
+  Accounts adds one with no command to type (`claude setup-token` runs in a terminal of its own; the
+  token is checked against the API, then goes to the system's credential store, never into the app's
+  settings; a session that gets a 401 stops and says to sign in again), shows each account's
+  limits and when its token ends, and can switch accounts by itself at the limit.
 - **Pull requests.** Status and checks in the details panel; a red check's failing log lines go to the
   session with one click.
 - **Permissions you granted.** Settings → Permissions lists every "always allow" rule from your user and
@@ -75,16 +75,17 @@ Built with Tauri 2, React 19 and shadcn/ui. Runs on Linux, macOS and Windows.
 
 ## Drive it from Claude Code and scripts
 
-Settings → Sessions → **Let Claude Code drive the app** gives every Claude Code session the app's tools (an MCP server named `session-dashboard`): start a session the app runs, message it, read it, wait for it, stop it, show it. A session started this way is an ordinary session of the app: listed, restored after a restart, its permission prompts answered by you. Sessions the app runs also accept messages from your other sessions (Claude Code's SendMessage).
+Settings → Sessions → **Let Claude Code drive the app** gives every Claude Code session the app's tools (an MCP server named `session-dashboard`): start a session the app runs, message it, read it, wait for it, stop it, show it, archive it (not while it works or waits for your answer, and never the asking session itself) or bring it back. With `notify_when_done` the asking session gets a short message when the session it started or messaged ends its turn, the way your own messages reach it (a terminal session gets it typed into its terminal where the app can do that). A session started this way is an ordinary session of the app: listed, restored after a restart, its permission prompts answered by you. Sessions the app runs also accept messages from your other sessions (Claude Code's SendMessage).
 
 The same from a terminal or a script, with the `sd` command (the app binary under that name):
 
 ```
 sd new --dir ~/repo --name "Fix login" --prompt "Find why the login loops"
-sd send "Fix login" "Also add a test"
+sd send --notify "Fix login" "Also add a test"   # --notify: message me when it is done
 sd wait "Fix login"        # 0 done, 2 waiting for you, 1 error
 sd read "Fix login" --last 5
-sd list
+sd list                    # --archived: archived sessions too
+sd archive "Fix login"     # sd unarchive brings it back
 ```
 
 A session is named by its id, an id prefix or a unique part of its title.

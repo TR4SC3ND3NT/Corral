@@ -1,6 +1,6 @@
 [package]
 name = "session-dashboard"
-version = "0.8.14"
+version = "0.8.18"
 description = "Corral: one place for all your Claude Code sessions"
 license = "MIT"
 authors = ["you"]
@@ -37,6 +37,8 @@ portable-pty = "0.9"
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 listeners = "0.6"
 sdwrap = { path = "crates/sdwrap" }
+# Claude account tokens in the system's credential store (claude/tokens.rs)
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
@@ -62,4 +64,11 @@ mimalloc = "0.1"
 
 [target.'cfg(unix)'.dependencies]
 crossterm = { version = "0.28", default-features = false }
+# geteuid (sys::is_root); already in the build through tauri
+libc = "0.2"
 
+
+# no debug info for the dependencies in dev builds (most of target/debug's size); ours keeps it,
+# so a backtrace still names our lines
+[profile.dev.package."*"]
+debug = false

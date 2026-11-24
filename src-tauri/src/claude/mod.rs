@@ -2,6 +2,8 @@
 //! commands and listens to `claude-event` (see src/backend/real.ts).
 
 pub mod accounts;
+pub mod signin;
+pub mod tokens;
 pub mod control;
 pub mod discover;
 pub mod git;
@@ -105,8 +107,8 @@ pub async fn save_attachment(name: String, data: String) -> Result<String, Strin
 
 /// Files back to how they were before a prompt (Claude Code's file snapshots).
 #[tauri::command]
-pub async fn claude_rewind_files(cwd: String, session_id: String, uuid: String, config_dir: Option<String>) -> Result<String, String> {
-    blocking(move || control::rewind_files(&cwd, &session_id, &uuid, config_dir.as_deref())).await
+pub async fn claude_rewind_files(cwd: String, session_id: String, uuid: String, config_dir: Option<String>, account_id: Option<String>) -> Result<String, String> {
+    blocking(move || control::rewind_files(&cwd, &session_id, &uuid, config_dir.as_deref(), account_id.as_deref())).await
 }
 
 #[tauri::command]
@@ -423,6 +425,78 @@ pub async fn claude_set_config_dirs(dirs: Vec<String>) -> Result<(), String> {
 #[tauri::command]
 pub async fn claude_copy_transcript(session_id: String, from_dir: Option<String>, to_dir: Option<String>) -> Result<String, String> {
     blocking(move || accounts::copy_transcript(&session_id, from_dir.as_deref(), to_dir.as_deref())).await
+}
+
+/// The chat summary beside a chat: one small model call (no tools, nothing saved) on `account_id`.
+#[tauri::command]
+pub async fn claude_quick_prompt(prompt: String, system: String, account_id: Option<String>) -> Result<String, String> {
+    blocking(move || discover::quick_prompt(&prompt, &system, account_id.as_deref(), std::time::Duration::from_secs(90))).await
+}
+
+/// Settings → Accounts: save an account's token (pasted) in the credential store.
+#[tauri::command]
+pub async fn account_token_save(account_id: String, token: String) -> Result<(), String> {
+    // checked against the API first: a token that does not work is never kept
+    blocking(move || signin::save_checked(&account_id, &token, discover::check_token, tokens::save)).await
+}
+
+/// Settings → Accounts: `claude setup-token` for an account in a terminal of its own; `on_data`
+/// gets its output (token masked) and how it ends (saved once the token is checked).
+#[tauri::command]
+pub async fn account_signin_start(account_id: String, on_data: tauri::ipc::Channel<Value>) -> Result<(), String> {
+    blocking(move || signin::start(&account_id, on_data)).await
+}
+
+/// Type into a sign-in's terminal (a code the browser shows).
+#[tauri::command]
+pub async fn account_signin_input(account_id: String, text: String) -> Result<(), String> {
+    blocking(move || signin::input(&account_id, &text)).await
+}
+
+/// End a sign-in (the dialog closed): its claude and terminal go.
+#[tauri::command]
+pub async fn account_signin_cancel(account_id: String) -> Result<(), String> {
+    blocking(move || {
+        signin::cancel(&account_id);
+        Ok(())
+    })
+    .await
+}
+
+/// Forget an account's token (its sessions stay).
+#[tauri::command]
+pub async fn account_token_delete(account_id: String) -> Result<(), String> {
+    blocking(move || tokens::delete(&account_id)).await
+}
+
+/// Whether an account has a token (the token itself never leaves Rust).
+#[tauri::command]
+pub async fn account_has_token(account_id: String) -> Result<bool, String> {
+    blocking(move || Ok(tokens::has(&account_id))).await
+}
+
+/// Sessions in older account folders (CLAUDE_CONFIG_DIR, before v0.8.16) not in ~/.claude yet.
+#[tauri::command]
+pub async fn claude_old_folders_pending(dirs: Vec<String>) -> Result<usize, String> {
+    blocking(move || {
+        let main = discover::claude_dir();
+        Ok(dirs.iter().map(|d| accounts::not_taken_over(&accounts::root_of(Some(d)), &main)).sum())
+    })
+    .await
+}
+
+/// Copy the sessions of older account folders into ~/.claude (the originals stay). Returns how many.
+#[tauri::command]
+pub async fn claude_take_over_folders(dirs: Vec<String>) -> Result<usize, String> {
+    blocking(move || {
+        let main = discover::claude_dir();
+        let mut n = 0;
+        for d in &dirs {
+            n += accounts::take_over(&accounts::root_of(Some(d)), &main)?;
+        }
+        Ok(n)
+    })
+    .await
 }
 
 /// The fork on the other account has its own transcript now: the copy it started from goes.

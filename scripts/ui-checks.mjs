@@ -457,36 +457,157 @@ check("archive from the session menu → Undo toast → History · Archived → 
   return title
 })
 
-check("usage limit card: Continue now on another account moves the parked session there", async () => {
+const WORK = { id: "a1", email: "work@firm.de", plan: "Max", createdAt: "2026-11-22T00:00:00.000Z", expiresAt: "2027-11-22T00:00:00.000Z" }
+
+check("accounts: the footer shows the active e-mail; the switcher makes another account active, Undo goes back", async () => {
+  await load("#/")
+  const footer = () => visible("[data-slot=sidebar-footer]").first()
+  // only your login: its e-mail bottom left
+  const row = footer().getByRole("button", { name: /^Account: you@example\.com/ })
+  await row.waitFor({ timeout: 3000 })
+  await action("patchSettings", { accounts: [WORK] })
+  await row.click()
+  const menu = visible('[role=menu][aria-label="Accounts"]').first()
+  await menu.waitFor({ timeout: 2000 })
+  // every account with its plan and limits; the active one checked
+  expect((await menu.getByRole("menuitem", { name: /you@example\.com, .*active$/ }).count()) === 1, "the active account is not marked")
+  await menu.getByRole("menuitem", { name: /^work@firm\.de, 5 h \d+% · week \d+%$/ }).click()
+  expect(await until(() => app((s) => s.settings.activeAccount === "a1")), "the account did not become active")
+  await footer().getByRole("button", { name: /^Account: work@firm\.de/ }).waitFor({ timeout: 2000 })
+  const toast = visible("[role=status]").filter({ hasText: "work@firm.de" }).first()
+  await toast.waitFor({ timeout: 2000 })
+  await toast.getByRole("button", { name: "Undo" }).click()
+  expect(await until(() => app((s) => s.settings.activeAccount === "")), "Undo did not switch back")
+  // Ctrl+K lists the other accounts
+  await page.keyboard.press("Control+k")
+  await visible("[cmdk-input]").first().type("account")
+  await visible("[cmdk-item]").filter({ hasText: "Switch account: work@firm.de" }).first().waitFor({ timeout: 2000 })
+  await page.keyboard.press("Escape")
+  // Settings → Accounts lists both by e-mail, no folder anywhere
+  await action("openSettings", "accounts")
+  const page2 = visible('[role=group][aria-label="work@firm.de"]').first()
+  await page2.waitFor({ timeout: 3000 })
+  expect(!(await visible("[role=dialog]").first().innerText()).includes(".claude-"), "a folder shows as an account")
+})
+
+check("accounts: Add waits for the checked token before Signed in; an invalid sign-in says so and leads to Sign in again", async () => {
+  await load("#/")
+  await action("openSettings", "accounts:add")
+  const dialog = () => visible("[role=dialog]").filter({ hasText: "Add a Claude account" }).first()
+  await dialog().waitFor({ timeout: 3000 })
+  await dialog().getByLabel("E-mail").fill("new@firm.de")
+  await dialog().getByRole("button", { name: "Sign in" }).click()
+  // waiting: not signed in yet, the field for a code or token is there
+  await dialog().getByText(/Waiting for the sign-in of/).waitFor({ timeout: 2000 })
+  expect(!(await dialog().innerText()).includes("Signed in."), "Signed in before the token was checked")
+  expect(await dialog().getByLabel("Code or token").isVisible(), "no field for a code or token while waiting")
+  await dialog().getByText("Signed in.", { exact: false }).waitFor({ timeout: 4000 })
+  expect(await until(() => app((s) => (s.settings.accounts ?? []).some((a) => a.email === "new@firm.de"))), "the account was not kept")
+  await page.keyboard.press("Escape")
+  await page.keyboard.press("Escape")
+  // a 401 marked the active account: the footer says so, its menu offers Sign in again
+  await action("patchSettings", { accounts: [{ ...WORK, invalid: true }], activeAccount: "a1" })
+  const footer = visible("[data-slot=sidebar-footer]").first()
+  await footer.getByText("Sign-in invalid · sign in again").waitFor({ timeout: 3000 })
+  await footer.getByRole("button", { name: /^Account: work@firm\.de/ }).click()
+  await page.getByRole("menuitem", { name: /Sign work@firm\.de in again/ }).click()
+  await visible("[role=dialog]").filter({ hasText: "Sign work@firm.de in again" }).first().waitFor({ timeout: 3000 })
+})
+
+check("usage limit card: Switch and continue makes another account active and continues there", async () => {
   await load("#/")
   const card = () => visible('section[aria-label="Sessions at the usage limit"]').first()
   await card().waitFor({ timeout: 3000 })
   // one account only: the card stays as it was
-  expect((await card().getByRole("button", { name: /Continue now on/ }).count()) === 0, "account button shown without a second account")
+  expect((await card().getByRole("button", { name: /Switch and continue/ }).count()) === 0, "switch button shown without a second account")
   const parked = await app((s) => Object.values(s.sessions).find((x) => !x.archived && /hit your 5-hour limit/.test(x.lastText ?? ""))?.id)
   expect(parked, "no parked session in the demo world")
-  const before = await app((s, id) => ({ model: s.sessions[id].model, effort: s.sessions[id].effort, mode: s.sessions[id].permissionMode, title: s.sessions[id].title }), parked)
-  await action("patchSettings", { claudeConfigDirs: ["~/.claude-work"] })
-  const btn = card().getByRole("button", { name: /Continue now on/ })
+  await action("patchSettings", { accounts: [WORK] })
+  const btn = card().getByRole("button", { name: /Switch and continue/ })
   await btn.waitFor({ timeout: 2000 })
   await btn.click()
-  // the other account, with its 5-hour and weekly use
-  const item = page.getByRole("menuitem", { name: /~\/\.claude-work, 5 h \d+% · week \d+%/ })
-  await item.waitFor({ timeout: 2000 })
-  await item.click()
-  const moved = await until(() => app((s, id) => Object.values(s.sessions).find((x) => x.movedFrom?.sessionId === id && !x.archived)?.id, parked))
-  expect(moved, "no session continued on the other account")
-  const after = await app((s, ids) => ({ old: s.sessions[ids[0]].archived, dir: s.sessions[ids[1]].configDir, model: s.sessions[ids[1]].model, effort: s.sessions[ids[1]].effort, mode: s.sessions[ids[1]].permissionMode, title: s.sessions[ids[1]].title }), [parked, moved])
-  expect(after.old, "the old session was not archived")
-  expect(after.dir === "~/.claude-work", `new session on ${after.dir}`)
-  expect(after.model === before.model && after.effort === before.effort && after.mode === before.mode, "model, effort or mode changed")
-  // listed once: the old one is archived, the new one on the overview
-  const shown = await app((s, title) => Object.values(s.sessions).filter((x) => !x.archived && x.title === title).length, before.title)
-  expect(shown === 1, `the session is listed ${shown} times`)
-  // its details say which account it runs on now
-  await go(`#/session/${moved}`)
-  const row = visible("div").filter({ hasText: /^~\/\.claude-workfrom ~\/\.claudeAccount$/ }).first()
+  await page.getByRole("menuitem", { name: /^work@firm\.de, 5 h \d+% · week \d+%/ }).click()
+  expect(await until(() => app((s) => s.settings.activeAccount === "a1")), "the account did not become active")
+  // the same session goes on (not archived, no copy)
+  expect(await until(() => app((s, id) => s.sessions[id].status === "working" || s.sessions[id].status === "done_unseen" || !/limit/.test(s.sessions[id].lastText ?? ""), parked), 4000), "the session did not continue")
+  const same = await app((s, id) => ({ archived: s.sessions[id].archived, copies: Object.values(s.sessions).filter((x) => x.title === s.sessions[id].title && !x.archived).length }), parked)
+  expect(!same.archived && same.copies === 1, `archived ${same.archived}, listed ${same.copies} times`)
+})
+
+check("search: a long title keeps the list in place; Restore brings an archived session back", async () => {
+  await load("#/")
+  const id = await app((s) => Object.values(s.sessions).find((x) => !x.archived && x.control === "history")?.id)
+  expect(id, "no past session in the demo world")
+  const title = `zzlong ${"a very long first prompt that runs on and on ".repeat(4)}`
+  await action("renameSession", id, title)
+  await action("archiveSessions", [id])
+  await page.keyboard.press("Control+k")
+  const input = visible("[cmdk-input]").first()
+  await input.waitFor({ timeout: 2000 })
+  await input.type("zzlong")
+  const row = visible("[cmdk-item]").filter({ hasText: "zzlong" }).first()
   await row.waitFor({ timeout: 3000 })
+  await wait(300)
+  // nothing in the dialog is wider than the dialog, so nothing scrolls sideways: rows keep their padding
+  await page.keyboard.press("ArrowDown")
+  await page.keyboard.press("ArrowUp")
+  const wide = await page.evaluate(() =>
+    [document.querySelector("[role=dialog]"), document.querySelector("[cmdk-root]"), document.querySelector("[cmdk-list]")].map((el) => ({ left: el.scrollLeft, over: el.scrollWidth - el.clientWidth })),
+  )
+  expect(wide.every((w) => w.left === 0 && w.over <= 1), `the search scrolls sideways: ${JSON.stringify(wide)}`)
+  expect(await row.getByRole("button", { name: /Restore/ }).isVisible(), "the row's end (Restore) is cut off")
+  // Restore on the row: back from the archive, the palette stays open on the same screen
+  await row.getByRole("button", { name: /Restore/ }).click()
+  expect(await until(() => app((s, id) => !s.sessions[id].archived, id)), "Restore in the search didn't restore")
+  expect((await hash()) === "#/", "Restore opened the session")
+  await page.keyboard.press("Escape")
+  // an archived session's chat says so and restores from its banner and its menu
+  await action("archiveSessions", [id])
+  await go(`#/session/${id}`)
+  const banner = visible("[role=status]").filter({ hasText: "Archived" }).first()
+  await banner.waitFor({ timeout: 3000 })
+  await banner.getByRole("button", { name: "Restore" }).click()
+  expect(await until(() => app((s, id) => !s.sessions[id].archived, id)), "the banner's Restore didn't restore")
+  // archiving the open session goes back to the overview: open it again
+  await action("archiveSessions", [id])
+  await go(`#/session/${id}`)
+  await visible('button[aria-label="More actions"]').first().click()
+  await page.getByRole("menuitem", { name: "Restore from archive" }).click()
+  expect(await until(() => app((s, id) => !s.sessions[id].archived, id)), "the menu's Restore didn't restore")
+})
+
+check("search: past and archived sessions in groups of their own; Resume brings a past one back without opening it", async () => {
+  await load("#/")
+  await page.keyboard.press("Control+k")
+  await visible("[cmdk-input]").first().type("Rate limiting for")
+  const group = visible("[cmdk-group]").filter({ has: page.locator("[cmdk-group-heading]", { hasText: /^Past sessions$/ }) }).first()
+  await group.waitFor({ timeout: 3000 })
+  const row = group.locator("[cmdk-item]").filter({ hasText: "Rate limiting for /v1/chat" }).first()
+  const id = await app((s) => Object.values(s.sessions).find((x) => x.title === "Rate limiting for /v1/chat" && x.control === "history")?.id)
+  await row.getByRole("button", { name: /^Resume / }).click()
+  expect(await until(() => app((s, id) => s.sessions[id].control === "owned", id)), "Resume did not bring the session back")
+  expect((await hash()) === "#/", "Resume opened the session")
+  expect((await visible("[cmdk-group-heading]").filter({ hasText: "Past and archived" }).count()) === 0, "the mixed group is still there")
+  await page.keyboard.press("Escape")
+})
+
+check("in this chat: the rail lists what the chat works on, the newest with the session's status", async () => {
+  await load("#/")
+  const ids = await discover()
+  await go(`#/session/${ids.idle}`)
+  const inChat = () => visible("aside section").filter({ has: page.getByRole("button", { name: "In this chat", exact: true }) })
+  const section = inChat().first()
+  await section.waitFor({ timeout: 6000 })
+  const items = section.locator("li")
+  await items.first().waitFor({ timeout: 6000 })
+  const n = await items.count()
+  expect(n >= 1 && n <= 6, `${n} items`)
+  // every item one line of text with a status glyph
+  const glyphs = await section.locator("li [role=img]").count()
+  expect(glyphs === n, `${glyphs} glyphs for ${n} items`)
+  // off in Settings: gone
+  await action("patchSettings", { chatSummary: false })
+  expect(await until(async () => (await inChat().count()) === 0), "still shown with the setting off")
 })
 
 check("search: Ctrl+K finds a past session; Resume brings it back to life", async () => {

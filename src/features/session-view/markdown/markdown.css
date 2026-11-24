@@ -165,6 +165,20 @@
   font-style: normal;
 }
 
+/* Copy on a quote: beside the end of its text (the quote as wide as its text, room for the
+   button after it), shown while the pointer is on it */
+.sd-markdown blockquote.sd-quote {
+  width: fit-content;
+  max-width: 100%;
+  padding-inline-end: 2.25rem;
+}
+.sd-quote-copy {
+  opacity: 0;
+}
+.sd-quote:is(:hover, :focus-within) .sd-quote-copy {
+  opacity: 1;
+}
+
 .sd-markdown kbd {
   padding: 0.0625em 0.375em;
   border: 1px solid var(--cc-wash-2);
@@ -441,6 +455,13 @@
 .sd-pinned {
   background: var(--sd-well);
   animation: sd-pinned-in 220ms cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+/* its last lines under the pointer: cut at the top, fading out there instead of a half line */
+.sd-pinned-more {
+  overflow: hidden;
+}
+.sd-pinned-more[data-cut] {
+  mask-image: linear-gradient(to bottom, transparent, #000 2.5rem);
 }
 
 /* "Scroll to bottom": the panel colour under the secondary fill */

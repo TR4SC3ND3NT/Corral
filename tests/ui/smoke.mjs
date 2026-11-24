@@ -424,6 +424,55 @@ test("chat: a message sent to a session at rest shows in the chat and Claude's r
   await expectValue(async () => (await reply.innerText()).length, (n) => n > first, "the reply does not stream")
 })
 
+test("chat: a link asks before it opens, and Esc closes that; no web view menu on a right-click", async (page) => {
+  await openSession(page, IDLE)
+  const link = transcript(page).getByRole("button", { name: "#42" }).last()
+  await expectVisible(link, "no link in Claude's answer")
+  await link.click()
+  const dialog = page.getByRole("dialog", { name: "Open link?" })
+  await expectText(dialog, "https://example.com/acme/web-app/issues/42", "the dialog does not show where the link goes")
+  await page.keyboard.press("Escape")
+  await expectHidden(dialog, "Esc did not close the link dialog")
+  const prevented = await link.evaluate((el) => !el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })))
+  assert(prevented, "a right-click on the chat shows the web view's own menu")
+})
+
+test("chat: a quote in Claude's answer copies on its own, lists with their dashes", async (page) => {
+  await openSession(page, IDLE)
+  await page.evaluate(() => {
+    window.__copied = ""
+    navigator.clipboard.writeText = async (t) => void (window.__copied = t)
+  })
+  const quote = transcript(page).locator("blockquote").last()
+  await expectVisible(quote, "no quote in Claude's answer")
+  await quote.hover()
+  if (process.env.UI_SHOTS) await quote.screenshot({ path: process.env.UI_SHOTS + "/quote.png" })
+  await quote.getByRole("button", { name: "Copy quote" }).click()
+  await expectValue(() => page.evaluate(() => window.__copied), "Shipped today:\n\n- the retry fix\n- its regression test", "the quote's Copy copied something else")
+})
+
+test("chat: reading up a reply pins its prompt as one whole line, more of it under the pointer", async (page) => {
+  await openSession(page, IDLE)
+  const scroller = transcript(page)
+  const pinned = page.getByRole("button", { name: "Scroll to your message" })
+  // read an earlier reply: its prompt scrolled out above, the end of the chat out below
+  await expectValue(async () => {
+    await scroller.evaluate((el) => {
+      const prompts = [...el.querySelectorAll('[data-msg="user"]')]
+      const p = prompts.at(-2) ?? prompts.at(-1)
+      if (p) el.scrollTop += p.getBoundingClientRect().bottom - el.getBoundingClientRect().top + 60
+      el.dispatchEvent(new Event("scroll"))
+    })
+    return pinned.isVisible()
+  }, true, "the prompt is not pinned while its reply is read")
+  const h = await pinned.evaluate((el) => el.getBoundingClientRect().height)
+  assert(h <= 34, `the pinned prompt is ${h}px tall, more than one line`)
+  if (process.env.UI_SHOTS) await page.screenshot({ path: process.env.UI_SHOTS + "/pinned.png", clip: { x: 300, y: 0, width: 1140, height: 200 } })
+  await pinned.hover()
+  await expectValue(() => pinned.evaluate((el) => el.getBoundingClientRect().height), (v) => v >= h - 1, "the pinned prompt shrank under the pointer")
+  if (process.env.UI_SHOTS) await page.screenshot({ path: process.env.UI_SHOTS + "/pinned-hover.png", clip: { x: 300, y: 0, width: 1140, height: 200 } })
+})
+
 test("chat: a message sent while Claude works waits in the queue, and can be removed", async (page) => {
   await openSession(page, IDLE)
   const box = composer(page)

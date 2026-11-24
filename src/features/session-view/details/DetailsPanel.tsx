@@ -33,8 +33,7 @@ import { openReview, openSession, sendMessage } from "@/store/actions"
 import { useOverlaps } from "@/store/selectors"
 import { capabilities } from "@/lib/status"
 import { homePath, plural } from "@/lib/format"
-import { accountLabel } from "@/lib/accounts"
-import { ContinueOnAccountItems, useCanMove, useMoveBlocked } from "@/features/accounts/ContinueOnAccount"
+import { accountName, activeAccountOf } from "@/lib/accounts"
 import { useHasAccounts } from "@/features/accounts/AccountItems"
 import { cn } from "@/lib/utils"
 import { IN_TAURI } from "@/lib/platform"
@@ -49,6 +48,10 @@ import { setExpanded, useChangedFiles, useExpanded } from "../sessionStore"
 import { useVerification } from "../signals"
 import { StartFreshButton } from "./StartFresh"
 import { breakdown, compactHint, severity } from "./contextMath"
+import { lastItem, summarize, useSummaries, type SummaryKind } from "../summary/chatSummary"
+import { StatusGlyph } from "@/components/common/StatusGlyph"
+import { useShownStatus } from "@/store/selectors"
+import type { Outcome } from "@/lib/outcome"
 
 // ---------------------------------------------------------------- shell
 
@@ -73,6 +76,7 @@ export function DetailsPanel({ sessionId }: { sessionId: ID }) {
           : "mr-1.5",
       )}
     >
+      <InThisChat sessionId={sessionId} />
       <Environment sessionId={sessionId} />
       <Context sessionId={sessionId} />
       <Changes sessionId={sessionId} />
@@ -127,8 +131,8 @@ function useFloating(ref: React.RefObject<HTMLElement | null>) {
 
 // ---------------------------------------------------------------- sections
 
-type SectionId = "environment" | "context" | "changes" | "checks" | "servers" | "tasks"
-const DEFAULT_OPEN: Record<SectionId, boolean> = { environment: true, context: false, changes: true, checks: true, servers: true, tasks: true }
+type SectionId = "summary" | "environment" | "context" | "changes" | "checks" | "servers" | "tasks"
+const DEFAULT_OPEN: Record<SectionId, boolean> = { summary: true, environment: true, context: false, changes: true, checks: true, servers: true, tasks: true }
 const SECTIONS = Object.keys(DEFAULT_OPEN) as SectionId[]
 const STICKY = "sd.rail.open"
 
@@ -238,6 +242,70 @@ function useBranch(sessionId: ID) {
   })
 }
 
+// ---------------------------------------------------------------- In this chat
+
+const DONE: Outcome = { tone: "green", kind: "done", label: "Done" }
+const KIND_NOTE: Record<SummaryKind, string | undefined> = { features: undefined, question: "Question", task: "Task" }
+
+/**
+ * What the chat is about: the features it builds or debugs (one sentence each), the question it
+ * answers, or the task it runs. The one still being worked on carries the session's own status
+ * glyph; finished ones a done mark. Written by a small model after a turn (chatSummary.ts).
+ */
+const InThisChat = memo(function InThisChat({ sessionId }: { sessionId: ID }) {
+  const on = useApp((st) => st.settings.chatSummary)
+  const summary = useSummaries((s) => s.map[sessionId])
+  const busy = useSummaries((s) => !!s.busy[sessionId])
+  const failed = useSummaries((s) => s.failed[sessionId])
+  const status = useShownStatus(sessionId)
+  const outcome = useApp((st) => st.sessions[sessionId]?.outcome)
+  const upto = useApp((st) => lastItem(st.transcripts[sessionId]))
+  const working = status === "working" || status === "starting"
+  const stale = !!upto && summary?.upto !== upto && failed !== upto
+  // after a turn: bring it up to date (a moment later: a quick follow-up costs no second call); a
+  // chat with none yet gets one at once, even while Claude works
+  const has = !!summary
+  useEffect(() => {
+    if (!on || !stale || (working && has)) return
+    const t = setTimeout(() => void summarize(sessionId), has ? 2500 : 600)
+    return () => clearTimeout(t)
+  }, [on, working, stale, has, upto, sessionId])
+  if (!on || (!summary && !busy && !stale)) return null
+  const items = summary?.items ?? []
+  // the one in the works: the newest open item (while Claude works on something not labelled yet,
+  // the newest item)
+  let cur = items.map((x) => x.state).lastIndexOf("open")
+  if (cur < 0 && working && items.length) cur = items.length - 1
+  const note = summary ? KIND_NOTE[summary.kind] : undefined
+  return (
+    <Section sessionId={sessionId} id="summary" title="In this chat" summary={cur >= 0 ? items[cur].text : note}>
+      {!summary && (
+        <div className="flex min-h-8 items-center gap-2.5 px-2 text-[13px] text-cc-fg3" aria-busy>
+          <span className="h-2.5 w-40 rounded-full bg-cc-wash-2" /> <span className="sr-only">Summarizing</span>
+        </div>
+      )}
+      <ul aria-label={summary ? (summary.kind === "features" ? "Features" : summary.kind === "question" ? "Question" : "Tasks") : undefined} className="flex flex-col">
+        {items.map((x, i) => (
+          <li key={i} className="flex min-h-8 min-w-0 items-start gap-2.5 rounded-lg px-2 py-1.5 text-sm leading-5">
+            <span className="grid size-5 shrink-0 place-items-center pt-px">
+              {i === cur ? (
+                <StatusGlyph status={status} outcome={outcome} size="sm" />
+              ) : x.state === "done" ? (
+                <StatusGlyph status="idle" outcome={DONE} size="sm" />
+              ) : (
+                <StatusGlyph status="stopped" size="sm" title={x.state === "dropped" ? "Dropped" : "Not finished"} />
+              )}
+            </span>
+            <span className={cn("min-w-0 flex-1", i === cur ? "text-cc-fg" : "text-cc-fg2", x.state === "dropped" && "line-through decoration-cc-fg3")}>{x.text}</span>
+            {note && i === items.length - 1 && <span className="shrink-0 pt-px text-[13px] text-cc-fg3">{note}</span>}
+          </li>
+        ))}
+      </ul>
+      {summary && busy && <span className="px-2 pb-1 text-xs text-cc-fg3">Updating…</span>}
+    </Section>
+  )
+})
+
 // ---------------------------------------------------------------- Environment
 
 const Environment = memo(function Environment({ sessionId }: { sessionId: ID }) {
@@ -304,44 +372,24 @@ const Environment = memo(function Environment({ sessionId }: { sessionId: ID }) 
   )
 })
 
-/** The account the session runs on (shown with another account set up), and moving it to another one. */
+/**
+ * The account the session last ran on (shown with another account set up), by e-mail. When the
+ * active account is another one: the session continues there with your next message.
+ */
 function AccountRow({ sessionId }: { sessionId: ID }) {
-  const configDir = useApp((st) => st.sessions[sessionId]?.configDir)
-  const from = useApp((st) => st.sessions[sessionId]?.movedFrom)
+  const ran = useApp((st) => st.sessions[sessionId]?.accountId)
+  const local = useApp((st) => !st.sessions[sessionId]?.machine && st.sessions[sessionId]?.control !== "observed")
+  const name = useApp((st) => (ran === undefined ? undefined : accountName(st, ran)))
+  const next = useApp((st) => activeAccountOf(st))
+  const nextName = useApp((st) => accountName(st, activeAccountOf(st)))
   const has = useHasAccounts()
-  const can = useCanMove(sessionId)
-  const why = useMoveBlocked(sessionId)
-  if (!configDir && !has) return null
+  if (!has || !local) return null
+  const moves = ran !== undefined && ran !== next
   return (
-    <div className="group/row flex min-h-8 min-w-0 items-center gap-2.5 rounded-lg px-2 text-sm leading-5" title={`The Claude Code config folder (account) this session runs on\n${configDir ?? accountLabel()}`}>
-      <span className="grid size-5 shrink-0 place-items-center text-cc-fg2 [&_svg]:size-4" aria-hidden>
-        <UserRound />
-      </span>
-      <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-        <span className="shrink-0 truncate font-mono text-[13px] text-cc-fg">{accountLabel(configDir)}</span>
-        {from && (
-          <span className="min-w-0 shrink truncate text-cc-fg2" title={`Continued from ${accountLabel(from.configDir)}${from.auto ? " by itself, at the usage limit" : ""}`}>
-            from {accountLabel(from.configDir)}
-          </span>
-        )}
-      </span>
-      <span className="shrink-0 text-[13px] leading-4 text-cc-fg2">Account</span>
-      {can && (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            aria-label="Continue on another account"
-            disabled={!!why}
-            title={why ?? "Continue on another account"}
-            className={cn(XS_GHOST, "w-6 justify-center px-0 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 disabled:opacity-0 data-[state=open]:opacity-100 pointer-coarse:opacity-100")}
-          >
-            <Ellipsis className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
-            <ContinueOnAccountItems sessionId={sessionId} />
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
+    <Row icon={<UserRound />} meta="Account" title={moves ? `Ran on ${name}. Your next message runs it on ${nextName}, the active account (same session, same history).` : "The Claude account this session runs on"}>
+      {name ?? nextName}
+      {moves && <span className="block truncate text-xs text-st-input-fg">Runs on {nextName} with your next message</span>}
+    </Row>
   )
 }
 

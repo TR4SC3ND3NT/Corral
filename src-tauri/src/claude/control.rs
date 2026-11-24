@@ -79,8 +79,11 @@ pub struct StartOpts {
     pub host: Option<String>,
     /// pictures for the first message (data: URLs)
     pub images: Vec<String>,
-    /// another Claude Code config folder (account): CLAUDE_CONFIG_DIR for this session
+    /// an older account's own config folder (sessions not taken over into ~/.claude yet)
     pub config_dir: Option<String>,
+    /// the Claude account it runs on (Settings → Accounts; none = your normal login): its token
+    /// from the credential store goes into the environment
+    pub account_id: Option<String>,
 }
 
 /// The CLI flag for the app's mode. The app's "default" (nothing chosen) passes no flag, so the
@@ -129,6 +132,12 @@ pub fn start(app: AppHandle, procs: Procs, mut o: StartOpts) -> Result<(), Strin
     .iter()
     .map(|s| s.to_string())
     .collect();
+    // bypass can be picked in the composer while the session runs: Claude Code allows that switch
+    // only in a session started with this flag (it changes nothing else: the mode stays the one
+    // asked for). Not on a server (often root there) nor as root here: Claude Code exits on it then.
+    if o.host.is_none() && !crate::sys::is_root() {
+        args.push("--allow-dangerously-skip-permissions".into());
+    }
     let mut push = |k: &str, v: &Option<String>| {
         if let Some(v) = v.as_ref().filter(|v| !v.is_empty()) {
             args.push(k.into());
@@ -177,6 +186,11 @@ pub fn start(app: AppHandle, procs: Procs, mut o: StartOpts) -> Result<(), Strin
         }
     };
     super::discover::clean_env(&mut cmd);
+    // the account's token after clean_env (which removes every CLAUDE_CODE_ variable); a session
+    // on a server keeps that computer's login
+    if o.host.is_none() {
+        super::tokens::apply(&mut cmd, o.account_id.as_deref())?;
+    }
     // exact state from claude itself: idle / running / requires_action, also while background
     // subagents or shells keep working after a turn's result
     cmd.env("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "1");
@@ -351,7 +365,7 @@ pub fn send_full(procs: &Procs, key: &str, text: &str, images: &[String], uuid: 
 
 /// Restore the files of a session to how they were before the prompt `uuid` (Claude Code's own
 /// file snapshots; `claude -p --resume <id> --rewind-files <uuid>`, nothing is sent to a model).
-pub fn rewind_files(cwd: &str, session_id: &str, uuid: &str, config_dir: Option<&str>) -> Result<String, String> {
+pub fn rewind_files(cwd: &str, session_id: &str, uuid: &str, config_dir: Option<&str>, account_id: Option<&str>) -> Result<String, String> {
     let ok_id = |s: &str| !s.is_empty() && s.len() < 80 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
     if !ok_id(session_id) || !ok_id(uuid) {
         return Err("bad session or message id".into());
@@ -362,6 +376,7 @@ pub fn rewind_files(cwd: &str, session_id: &str, uuid: &str, config_dir: Option<
         c.env("CLAUDE_CONFIG_DIR", crate::sys::expand(d));
     }
     super::discover::clean_env(&mut c);
+    super::tokens::apply(&mut c, account_id)?;
     let o = crate::sys::output_timeout(&mut c, 60).ok_or("claude did not answer within a minute")?;
     let out = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr)).trim().to_string();
     if o.status.success() {
